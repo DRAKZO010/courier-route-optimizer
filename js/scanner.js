@@ -354,8 +354,12 @@ const Scanner = {
         const address = formData.deliveryAddress || formData.address;
         if (address) {
             const pincode = this.extractPincode(address);
+            const localCoords = Maps.geocodeLocal(address);
 
             const tryGeocode = () => {
+                if (localCoords) {
+                    return Promise.resolve(localCoords);
+                }
                 if (pincode) {
                     return Maps.geocodeByPincode(pincode)
                         .catch(() => Maps.geocodePincodeFallback(pincode))
