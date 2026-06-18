@@ -31,16 +31,14 @@ function setupEventListeners() {
         });
     });
 
-    document.getElementById('start-barcode-scan').addEventListener('click', () => {
-        Scanner.initBarcodeScanner();
-        document.getElementById('start-barcode-scan').style.display = 'none';
-        document.getElementById('stop-barcode-scan').style.display = 'inline-block';
+    document.getElementById('start-ocr-scan').addEventListener('click', () => {
+        Scanner.captureAndRecognize();
     });
 
-    document.getElementById('stop-barcode-scan').addEventListener('click', () => {
-        Scanner.stopBarcodeScanner();
-        document.getElementById('start-barcode-scan').style.display = 'inline-block';
-        document.getElementById('stop-barcode-scan').style.display = 'none';
+    document.getElementById('stop-ocr-scan').addEventListener('click', () => {
+        Scanner.stopOCRScanner();
+        document.getElementById('start-ocr-scan').style.display = 'inline-block';
+        document.getElementById('stop-ocr-scan').style.display = 'none';
     });
 
     document.getElementById('manual-entry-form').addEventListener('submit', (e) => {
@@ -80,8 +78,22 @@ function setupEventListeners() {
 
     document.getElementById('scan-another').addEventListener('click', () => {
         document.getElementById('scan-result').style.display = 'none';
+        document.getElementById('ocr-extracted-text').style.display = 'none';
+        document.getElementById('ocr-text-output').value = '';
         document.getElementById('manual-entry-form').reset();
         navigateToSection('scanner');
+    });
+
+    document.getElementById('ocr-confirm-text').addEventListener('click', () => {
+        const text = document.getElementById('ocr-text-output').value;
+        if (text) {
+            const parsed = Scanner.parseOCRText(text);
+            if (parsed) {
+                Scanner.processScannedData(parsed);
+            } else {
+                showNotification('Could not parse package info from text', 'warning');
+            }
+        }
     });
 }
 
@@ -99,6 +111,10 @@ function switchScannerMode(mode) {
 
     document.getElementById(`${mode}-mode`).classList.add('active');
     document.querySelector(`[data-mode="${mode}"]`).classList.add('active');
+
+    if (mode === 'ocr') {
+        Scanner.initOCRScanner();
+    }
 }
 
 function getCurrentLocation() {
@@ -152,7 +168,7 @@ function displayPackages() {
     const container = document.getElementById('packages-container');
 
     if (packages.length === 0) {
-        container.innerHTML = '<p class="empty-state">No packages scanned yet. Start by scanning a package!</p>';
+        container.innerHTML = '<p class="empty-state">No packages scanned yet. Start by scanning a package with OCR!</p>';
         return;
     }
 

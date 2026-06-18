@@ -1,7 +1,8 @@
-let barcodeStream = null;
+let ocrStream = null;
+let ocrWorker = null;
 
 const Scanner = {
-    initBarcodeScanner: function() {
+    initOCRScanner: function () {
         const constraints = {
             video: {
                 facingMode: 'environment',
@@ -12,11 +13,13 @@ const Scanner = {
 
         navigator.mediaDevices.getUserMedia(constraints)
             .then(stream => {
-                barcodeStream = stream;
-                const video = document.getElementById('barcode-video');
+                ocrStream = stream;
+                const video = document.getElementById('ocr-video');
                 video.srcObject = stream;
                 video.play();
-                this.startBarcodeScan();
+                document.getElementById('start-ocr-scan').style.display = 'inline-block';
+                document.getElementById('stop-ocr-scan').style.display = 'none';
+                showNotification('Camera ready. Capture a frame to scan text.', 'info');
             })
             .catch(err => {
                 console.error('Camera error:', err);
@@ -24,65 +27,191 @@ const Scanner = {
             });
     },
 
-    startBarcodeScan: function() {
-        const video = document.getElementById('barcode-video');
-        const canvas = document.getElementById('barcode-canvas');
-        const ctx = canvas.getContext('2d');
-
-        const detectBarcode = () => {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                ctx.drawImage(video, 0, 0);
-
-                Quagga.decodeSingle({
-                    src: canvas.toDataURL(),
-                    numOfWorkers: 2,
-                    inputStream: {
-                        type: 'ImageData',
-                        size: 800
-                    },
-                    decoder: {
-                        readers: ['code_128_reader', 'ean_reader', 'upc_reader', 'qr_reader']
+    initTesseractWorker: async function () {
+        if (ocrWorker) return ocrWorker;
+        try {
+            ocrWorker = await Tesseract.createWorker('eng', 1, {
+                logger: (info) => {
+                    if (info.status === 'recognizing text') {
+                        const pct = Math.round(info.progress * 100);
+                        this.updateProgress(pct, 'Recognizing text...');
                     }
-                }, (result) => {
-                    if (result && result.codeResult) {
-                        this.handleBarcodeDetected(result.codeResult.code);
-                    }
-                });
-            }
-            requestAnimationFrame(detectBarcode);
-        };
-        detectBarcode();
-    },
-
-    handleBarcodeDetected: function(code) {
-        console.log('Barcode detected:', code);
-        this.processScannedCode(code);
-        showNotification(`Barcode detected: ${code}`, 'success');
-    },
-
-    processScannedCode: function(code) {
-        const packageData = {
-            packageId: code,
-            address: 'Address not available - please verify manually',
-            scannedAt: new Date().toISOString()
-        };
-        console.log('Scanned package:', packageData);
-    },
-
-    stopBarcodeScanner: function() {
-        if (barcodeStream) {
-            barcodeStream.getTracks().forEach(track => track.stop());
-            barcodeStream = null;
+                }
+            });
+            return ocrWorker;
+        } catch (err) {
+            console.error('Tesseract init error:', err);
+            showNotification('Failed to initialize OCR engine', 'error');
+            return null;
         }
     },
 
-    handleManualEntry: function(formData) {
+    captureAndRecognize: async function () {
+        const video = document.getElementById('ocr-video');
+        const canvas = document.getElementById('ocr-canvas');
+        const ctx = canvas.getContext('2d');
+
+        if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+            showNotification('Camera not ready', 'error');
+            return;
+        }
+
+        document.getElementById('ocr-progress').style.display = 'block';
+        this.updateProgress(0, 'Initializing OCR engine...');
+
+        const worker = await this.initTesseractWorker();
+        if (!worker) return;
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+
+        this.updateProgress(10, 'Capturing image...');
+
+        try {
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            this.updateProgress(20, 'Processing image...');
+
+            const result = await worker.recognize(imageData);
+            const text = result.data.text.trim();
+
+            this.updateProgress(100, 'Scan complete!');
+
+            if (text.length === 0) {
+                showNotification('No text detected. Try better lighting or angle.', 'warning');
+                document.getElementById('ocr-progress').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('ocr-text-output').value = text;
+            document.getElementById('ocr-extracted-text').style.display = 'block';
+
+            const parsed = this.parseOCRText(text);
+            if (parsed) {
+                this.processScannedData(parsed);
+            } else {
+                showNotification('Text detected but could not parse package info. Review below.', 'warning');
+            }
+        } catch (err) {
+            console.error('OCR error:', err);
+            showNotification('OCR processing failed', 'error');
+        }
+
+        setTimeout(() => {
+            document.getElementById('ocr-progress').style.display = 'none';
+        }, 1500);
+    },
+
+    parseOCRText: function (text) {
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+        const trackingPatterns = [
+            /\b([A-Z]{2,4}[-\s]?\d{6,12})\b/,
+            /\b(\d{10,20})\b/,
+            /\b(TRK[-\s]?\d{4,10})\b/i,
+            /\b(PKG[-\s]?\d{4,10})\b/i,
+            /\b(\d{4}[-\s]?\d{4}[-\s]?\d{4})\b/
+        ];
+
+        let trackingNumber = null;
+        for (const line of lines) {
+            for (const pattern of trackingPatterns) {
+                const match = line.match(pattern);
+                if (match) {
+                    trackingNumber = match[1].replace(/\s+/g, '-');
+                    break;
+                }
+            }
+            if (trackingNumber) break;
+        }
+
+        let recipientName = null;
+        const namePatterns = [
+            /(?:to|recipient|name|attn)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})/i,
+            /\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b/
+        ];
+        for (const line of lines) {
+            for (const pattern of namePatterns) {
+                const match = line.match(pattern);
+                if (match) {
+                    recipientName = match[1] || match[0];
+                    break;
+                }
+            }
+            if (recipientName) break;
+        }
+
+        let address = null;
+        const addressPatterns = [
+            /(?:address|delivery|ship to|dest)[:\s]*(.+)/i,
+            /\d{1,5}\s+[\w\s]+(?:st|ave|blvd|rd|dr|ln|way|ct|pl|street|avenue|boulevard|road|drive|lane|court|place)\b/i,
+            /\d{1,5}\s+[\w\s]+,\s*[\w\s]+,?\s*[A-Z]{2}\s+\d{5}/i
+        ];
+        for (const line of lines) {
+            for (const pattern of addressPatterns) {
+                const match = line.match(pattern);
+                if (match) {
+                    address = match[1] ? match[1].trim() : match[0].trim();
+                    break;
+                }
+            }
+            if (address) break;
+        }
+
+        if (!trackingNumber && lines.length > 0) {
+            trackingNumber = 'OCR-' + Date.now();
+        }
+
+        if (!trackingNumber && !address) return null;
+
+        return {
+            packageId: trackingNumber,
+            recipientName: recipientName || 'Unknown',
+            address: address || 'Address not detected',
+            rawText: text
+        };
+    },
+
+    processScannedData: function (data) {
+        this.processScannedCode(data);
+        showNotification(`OCR scan complete: ${data.packageId}`, 'success');
+    },
+
+    updateProgress: function (pct, message) {
+        const bar = document.getElementById('ocr-progress-bar');
+        const status = document.getElementById('ocr-status');
+        if (bar) bar.style.width = pct + '%';
+        if (status) status.textContent = message;
+    },
+
+    stopOCRScanner: function () {
+        if (ocrStream) {
+            ocrStream.getTracks().forEach(track => track.stop());
+            ocrStream = null;
+        }
+        if (ocrWorker) {
+            ocrWorker.terminate();
+            ocrWorker = null;
+        }
+    },
+
+    processScannedCode: function (data) {
+        const packageData = {
+            packageId: data.packageId || 'OCR-' + Date.now(),
+            recipientName: data.recipientName || 'Unknown',
+            deliveryAddress: data.address || 'Address not available',
+            phoneNumber: ''
+        };
+        console.log('Scanned package:', packageData);
+        this.handleManualEntry(packageData);
+    },
+
+    handleManualEntry: function (formData) {
         if (formData.latitude && formData.longitude) {
             this.savePackage(formData);
-        } else if (formData.address) {
-            Maps.geocodeAddress(formData.address)
+        } else if (formData.deliveryAddress || formData.address) {
+            const address = formData.deliveryAddress || formData.address;
+            Maps.geocodeAddress(address)
                 .then(coords => {
                     formData.latitude = coords.lat;
                     formData.longitude = coords.lng;
@@ -90,17 +219,22 @@ const Scanner = {
                 })
                 .catch(err => {
                     console.error('Geocoding error:', err);
-                    showNotification('Could not geocode address', 'error');
+                    showNotification('Could not geocode address. Package saved without coordinates.', 'warning');
+                    formData.latitude = null;
+                    formData.longitude = null;
+                    this.savePackage(formData);
                 });
+        } else {
+            this.savePackage(formData);
         }
     },
 
-    savePackage: function(packageData) {
+    savePackage: function (packageData) {
         const pkg = Storage.addPackage({
             packageId: packageData.packageId,
-            name: packageData.recipientName,
-            address: packageData.deliveryAddress,
-            phone: packageData.phoneNumber,
+            name: packageData.recipientName || packageData.name,
+            address: packageData.deliveryAddress || packageData.address,
+            phone: packageData.phoneNumber || packageData.phone,
             latitude: packageData.latitude,
             longitude: packageData.longitude
         });
@@ -109,7 +243,7 @@ const Scanner = {
         this.showScanResult(pkg);
     },
 
-    showScanResult: function(pkg) {
+    showScanResult: function (pkg) {
         document.getElementById('result-tracking').textContent = pkg.packageId;
         document.getElementById('result-address').textContent = pkg.address;
         document.getElementById('scan-result').style.display = 'block';

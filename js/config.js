@@ -18,6 +18,11 @@ const CONFIG = {
         maxStopsPerRoute: 20,
         minStopsPerRoute: 1
     },
+    OCR: {
+        language: 'eng',
+        confidenceThreshold: 60,
+        maxRetries: 2
+    },
     STORAGE_KEYS: {
         PACKAGES: 'courier_packages',
         ROUTES: 'courier_routes',

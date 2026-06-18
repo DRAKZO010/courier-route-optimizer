@@ -6,7 +6,7 @@
     <title>Courier Route Optimizer</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDemoKey&libraries=places,geometry"></script>
-    <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -27,7 +27,7 @@
             <aside class="sidebar">
                 <nav class="nav-menu">
                     <button class="nav-btn active" data-section="dashboard">📊 Dashboard</button>
-                    <button class="nav-btn" data-section="scanner">📱 Scan Package</button>
+                    <button class="nav-btn" data-section="scanner">📝 Scan Package</button>
                     <button class="nav-btn" data-section="routes">🗺️ Routes</button>
                     <button class="nav-btn" data-section="history">✅ History</button>
                     <button class="nav-btn" data-section="settings">⚙️ Settings</button>
@@ -86,7 +86,7 @@
                         <div class="packages-list">
                             <h3>📦 Pending Deliveries</h3>
                             <div id="packages-container" class="packages-scroll">
-                                <p class="empty-state">No packages scanned yet. Start by scanning a package!</p>
+                                <p class="empty-state">No packages scanned yet. Start by scanning a package with OCR!</p>
                             </div>
                         </div>
                     </div>
@@ -95,26 +95,37 @@
                 <!-- Scanner Section -->
                 <div id="scanner" class="section">
                     <div class="section-header">
-                        <h2>Package Scanner</h2>
+                        <h2>Package OCR Scanner</h2>
                     </div>
 
                     <div class="scanner-container">
                         <div class="scanner-modes">
-                            <button class="mode-btn active" data-mode="barcode">📊 Barcode Scanner</button>
+                            <button class="mode-btn active" data-mode="ocr">📝 OCR Scanner</button>
                             <button class="mode-btn" data-mode="manual">✏️ Manual Entry</button>
                         </div>
 
-                        <!-- Barcode Scanner Mode -->
-                        <div id="barcode-mode" class="mode-content active">
+                        <!-- OCR Scanner Mode -->
+                        <div id="ocr-mode" class="mode-content active">
                             <div class="scanner-preview">
-                                <video id="barcode-video" style="width: 100%; max-width: 500px; border-radius: 8px;"></video>
-                                <canvas id="barcode-canvas" style="display: none;"></canvas>
+                                <video id="ocr-video" style="width: 100%; max-width: 500px; border-radius: 8px;"></video>
+                                <canvas id="ocr-canvas" style="display: none;"></canvas>
                             </div>
                             <div class="scanner-controls">
-                                <button class="btn btn-primary" id="start-barcode-scan">🎯 Start Scan</button>
-                                <button class="btn btn-secondary" id="stop-barcode-scan" style="display: none;">⛔ Stop Scan</button>
+                                <button class="btn btn-primary" id="start-ocr-scan">📸 Capture & Scan</button>
+                                <button class="btn btn-secondary" id="stop-ocr-scan" style="display: none;">⛔ Stop Scan</button>
                             </div>
-                            <p class="scanner-hint">Point your camera at the barcode or QR code on the package</p>
+                            <p class="scanner-hint">Point your camera at the package label, then capture to extract text via OCR</p>
+                            <div id="ocr-progress" style="display: none; margin-top: 1rem;">
+                                <div style="background: #e2e8f0; border-radius: 8px; height: 8px; overflow: hidden;">
+                                    <div id="ocr-progress-bar" style="background: var(--primary-color); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                                </div>
+                                <p id="ocr-status" class="scanner-hint">Processing...</p>
+                            </div>
+                            <div id="ocr-extracted-text" style="display: none; margin-top: 1rem;">
+                                <label style="font-weight: 600; font-size: 0.95rem;">Extracted Text:</label>
+                                <textarea id="ocr-text-output" readonly style="width: 100%; height: 100px; border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.75rem; font-size: 0.9rem; margin-top: 0.5rem;"></textarea>
+                                <button class="btn btn-primary" id="ocr-confirm-text" style="margin-top: 0.5rem;">✅ Use This Text</button>
+                            </div>
                         </div>
 
                         <!-- Manual Entry Mode -->
@@ -164,7 +175,7 @@
                             <p><strong>Address:</strong> <span id="result-address"></span></p>
                             <p><strong>Status:</strong> <span id="result-status">Added to route</span></p>
                         </div>
-                        <button class="btn btn-primary" id="scan-another">📱 Scan Another</button>
+                        <button class="btn btn-primary" id="scan-another">📝 Scan Another</button>
                     </div>
                 </div>
 

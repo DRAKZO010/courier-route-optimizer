@@ -1,1 +1,54 @@
-// OCR Worker - Process image data in background thread\n// Using Tesseract.js via importScripts\n\nimportScripts('https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js');\n\nlet ocrReady = false;\n\nconst { createWorker } = Tesseract;\nlet worker = null;\n\n// Initialize Tesseract worker\nasync function initializeTesseract() {\n    if (!ocrReady) {\n        try {\n            worker = await createWorker('eng');\n            ocrReady = true;\n            console.log('OCR Worker initialized');\n        } catch (error) {\n            console.error('Failed to initialize OCR:', error);\n        }\n    }\n}\n\n// Process incoming messages\nself.onmessage = async (e) => {\n    if (e.data.type === 'process-image') {\n        if (!ocrReady) {\n            await initializeTesseract();\n        }\n\n        try {\n            const imageData = e.data.imageData;\n            const canvas = new OffscreenCanvas(imageData.width, imageData.height);\n            const ctx = canvas.getContext('2d');\n            ctx.putImageData(imageData, 0, 0);\n            const blob = await canvas.convertToBlob();\n\n            // Perform OCR\n            const result = await worker.recognize(blob);\n            const extractedText = result.data.text;\n\n            // Send result back\n            self.postMessage({\n                type: 'ocr-result',\n                text: extractedText,\n                confidence: result.data.confidence\n            });\n        } catch (error) {\n            console.error('OCR error:', error);\n            self.postMessage({\n                type: 'ocr-error',\n                error: error.message\n            });\n        }\n    } else if (e.data.type === 'terminate') {\n        if (worker) {\n            worker.terminate();\n        }\n        self.close();\n    }\n};\n\n// Initialize on worker start\ninitializeTesseract();\n
+importScripts('https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js');
+
+let ocrReady = false;
+let worker = null;
+
+async function initializeTesseract() {
+    if (!ocrReady) {
+        try {
+            worker = await Tesseract.createWorker('eng');
+            ocrReady = true;
+            console.log('OCR Worker initialized');
+        } catch (error) {
+            console.error('Failed to initialize OCR:', error);
+        }
+    }
+}
+
+self.onmessage = async (e) => {
+    if (e.data.type === 'process-image') {
+        if (!ocrReady) {
+            await initializeTesseract();
+        }
+
+        try {
+            const imageData = e.data.imageData;
+            const canvas = new OffscreenCanvas(imageData.width, imageData.height);
+            const ctx = canvas.getContext('2d');
+            ctx.putImageData(imageData, 0, 0);
+            const blob = await canvas.convertToBlob();
+
+            const result = await worker.recognize(blob);
+            const extractedText = result.data.text;
+
+            self.postMessage({
+                type: 'ocr-result',
+                text: extractedText,
+                confidence: result.data.confidence
+            });
+        } catch (error) {
+            console.error('OCR error:', error);
+            self.postMessage({
+                type: 'ocr-error',
+                error: error.message
+            });
+        }
+    } else if (e.data.type === 'terminate') {
+        if (worker) {
+            worker.terminate();
+        }
+        self.close();
+    }
+};
+
+initializeTesseract();
