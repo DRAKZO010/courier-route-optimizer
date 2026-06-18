@@ -1,118 +1,66 @@
 const RouteOptimizer = {
-    optimizeRoutes: function(packages, currentLocation) {
-        if (packages.length === 0) return [];
+    optimizeRoutes: function (packages, currentLocation) {
+        if (packages.length === 0 || !currentLocation) return [];
 
         const validPackages = packages.filter(p => p.latitude != null && p.longitude != null);
         if (validPackages.length === 0) return [];
 
-        const routes = [];
-        let currentRoute = [currentLocation];
-        let routeDistance = 0;
-        let remainingPackages = [...validPackages];
+        const sorted = [...validPackages].sort((a, b) => {
+            const distA = Maps.calculateDistance(currentLocation, { lat: a.latitude, lng: a.longitude });
+            const distB = Maps.calculateDistance(currentLocation, { lat: b.latitude, lng: b.longitude });
+            return distA - distB;
+        });
 
-        while (remainingPackages.length > 0) {
-            let nearestPackage = null;
-            let nearestDistance = Infinity;
-            let nearestIndex = -1;
-
-            for (let i = 0; i < remainingPackages.length; i++) {
-                const pkg = remainingPackages[i];
-                const distance = Maps.calculateDistance(
-                    currentRoute[currentRoute.length - 1],
-                    { lat: pkg.latitude || 0, lng: pkg.longitude || 0 }
-                );
-
-                if (distance < nearestDistance) {
-                    nearestDistance = distance;
-                    nearestPackage = pkg;
-                    nearestIndex = i;
-                }
-            }
-
-            if (!nearestPackage) break;
-
-            if (routeDistance + nearestDistance > CONFIG.MAX_PACKAGE_DISTANCE && currentRoute.length > 1) {
-                routes.push(this.createRoute(currentRoute));
-                currentRoute = [currentLocation];
-                routeDistance = 0;
-            } else {
-                currentRoute.push({ lat: nearestPackage.latitude || 0, lng: nearestPackage.longitude || 0 });
-                currentRoute.push(nearestPackage);
-                routeDistance += nearestDistance;
-                remainingPackages.splice(nearestIndex, 1);
-            }
-        }
-
-        if (currentRoute.length > 1) {
-            routes.push(this.createRoute(currentRoute));
-        }
-
-        return routes;
-    },
-
-    createRoute: function(waypoints) {
+        const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         let totalDistance = 0;
-        let packages = [];
+        let lastLocation = currentLocation;
 
-        for (let i = 0; i < waypoints.length - 1; i++) {
-            const current = waypoints[i];
-            const next = waypoints[i + 1];
+        const stops = sorted.map((pkg, index) => {
+            const distFromPrev = Maps.calculateDistance(lastLocation, { lat: pkg.latitude, lng: pkg.longitude });
+            totalDistance += distFromPrev;
+            lastLocation = { lat: pkg.latitude, lng: pkg.longitude };
 
-            if (next.address) {
-                packages.push(next);
-            }
-
-            if (current && next && current.lat && current.lng && next.lat && next.lng) {
-                totalDistance += Maps.calculateDistance(current, next);
-            }
-        }
+            return {
+                stopLetter: letters[index] || (index + 1).toString(),
+                stopNumber: index + 1,
+                packageId: pkg.packageId || pkg.id,
+                name: pkg.name || 'Unknown',
+                address: pkg.address || 'No address',
+                latitude: pkg.latitude,
+                longitude: pkg.longitude,
+                distanceFromPrev: distFromPrev.toFixed(2),
+                distanceFromStart: Maps.calculateDistance(currentLocation, { lat: pkg.latitude, lng: pkg.longitude }).toFixed(2),
+                status: 'pending'
+            };
+        });
 
         const estimatedTime = Math.round((totalDistance / CONFIG.AVERAGE_SPEED) * 60);
 
-        return {
+        return [{
             id: Date.now().toString(),
-            waypoints: waypoints,
-            distance: totalDistance.toFixed(2),
+            stops: stops,
+            totalDistance: totalDistance.toFixed(2),
             estimatedTime: estimatedTime,
-            packages: packages,
             status: 'pending',
             createdAt: new Date().toISOString()
-        };
+        }];
     },
 
-    sortByDistance: function(packages, currentLocation) {
-        return packages.sort((a, b) => {
-            const distanceA = Maps.calculateDistance(
-                currentLocation,
-                { lat: a.latitude || 0, lng: a.longitude || 0 }
-            );
-            const distanceB = Maps.calculateDistance(
-                currentLocation,
-                { lat: b.latitude || 0, lng: b.longitude || 0 }
-            );
-            return distanceA - distanceB;
-        });
-    },
-
-    calculateTotalDistance: function(packages, currentLocation) {
+    calculateTotalDistance: function (packages, currentLocation) {
         let total = 0;
         let lastLocation = currentLocation;
 
-        packages.forEach(pkg => {
-            if (pkg.latitude != null && pkg.longitude != null) {
-                const distance = Maps.calculateDistance(
-                    lastLocation,
-                    { lat: pkg.latitude, lng: pkg.longitude }
-                );
-                total += distance;
-                lastLocation = { lat: pkg.latitude, lng: pkg.longitude };
-            }
+        const valid = packages.filter(p => p.latitude != null && p.longitude != null);
+        valid.forEach(pkg => {
+            const distance = Maps.calculateDistance(lastLocation, { lat: pkg.latitude, lng: pkg.longitude });
+            total += distance;
+            lastLocation = { lat: pkg.latitude, lng: pkg.longitude };
         });
 
         return total.toFixed(2);
     },
 
-    calculateEstimatedTime: function(distance) {
+    calculateEstimatedTime: function (distance) {
         return Math.round((distance / CONFIG.AVERAGE_SPEED) * 60);
     }
 };

@@ -186,15 +186,15 @@ const Scanner = {
     parseOCRText: function (text) {
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
+        let trackingNumber = null;
         const trackingPatterns = [
-            /\b([A-Z]{2,4}[-\s]?\d{6,12})\b/,
-            /\b(\d{10,20})\b/,
             /\b(TRK[-\s]?\d{4,10})\b/i,
             /\b(PKG[-\s]?\d{4,10})\b/i,
-            /\b(\d{4}[-\s]?\d{4}[-\s]?\d{4})\b/
+            /\b(AWB[-\s]?\d{6,12})\b/i,
+            /\b(DOC[-\s]?\d{4,10})\b/i,
+            /\b([A-Z]{2,4}[-\s]?\d{6,12})\b/,
+            /\b(\d{10,20})\b/
         ];
-
-        let trackingNumber = null;
         for (const line of lines) {
             for (const pattern of trackingPatterns) {
                 const match = line.match(pattern);
@@ -208,47 +208,83 @@ const Scanner = {
 
         let recipientName = null;
         const namePatterns = [
-            /(?:to|recipient|name|attn)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})/i,
-            /\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b/
+            /(?:to|recipient|name|attn|consignee)[:\s]+(.+)/i,
+            /(?:mr|mrs|ms|dr|shri|smt)[.\s]+(.+)/i
         ];
         for (const line of lines) {
             for (const pattern of namePatterns) {
                 const match = line.match(pattern);
                 if (match) {
-                    recipientName = match[1] || match[0];
+                    recipientName = match[1].trim().substring(0, 50);
                     break;
                 }
             }
             if (recipientName) break;
         }
-
-        let address = null;
-        const addressPatterns = [
-            /(?:address|delivery|ship to|dest)[:\s]*(.+)/i,
-            /\d{1,5}\s+[\w\s]+(?:st|ave|blvd|rd|dr|ln|way|ct|pl|street|avenue|boulevard|road|drive|lane|court|place)\b/i,
-            /\d{1,5}\s+[\w\s]+,\s*[\w\s]+,?\s*[A-Z]{2}\s+\d{5}/i
-        ];
-        for (const line of lines) {
-            for (const pattern of addressPatterns) {
-                const match = line.match(pattern);
-                if (match) {
-                    address = match[1] ? match[1].trim() : match[0].trim();
+        if (!recipientName) {
+            for (const line of lines) {
+                if (/^[A-Z][a-z]+(\s+[A-Z][a-z]+){1,3}$/.test(line) && line.length < 40) {
+                    recipientName = line;
                     break;
                 }
             }
-            if (address) break;
         }
 
-        if (!trackingNumber && lines.length > 0) {
-            trackingNumber = 'OCR-' + Date.now();
+        let address = null;
+        const addressKeywords = /(?:address|delivery|ship\s*to|dest|deliver\s*at|location|place|door|flat|house|apartment|floor|building|tower|block|sector|colony|nagar|road|street|avenue|lane|drive|way|blvd|park|extension|enclave|layout|scheme|mohali|phase|dist|district|state|pin|pincode|zip)/i;
+        for (const line of lines) {
+            if (addressKeywords.test(line) && line.length > 5) {
+                address = line.replace(/^(?:address|delivery|ship\s*to|dest|deliver\s*at|location|place)[:\s]*/i, '').trim();
+                break;
+            }
         }
 
-        if (!trackingNumber && !address) return null;
+        if (!address) {
+            const streetPattern = /\d{1,6}\s+[\w\s,.-]+(?:st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|way|ct|court|pl|place|nagar|road|lane|colony|extension|enclave|marg)\b/i;
+            for (const line of lines) {
+                const match = line.match(streetPattern);
+                if (match) {
+                    address = match[0].trim();
+                    break;
+                }
+            }
+        }
+
+        if (!address) {
+            const pincodePattern = /\b\d{5,6}\b/;
+            for (let i = 0; i < lines.length; i++) {
+                if (pincodePattern.test(lines[i])) {
+                    let addr = lines[i];
+                    if (i > 0) addr = lines[i - 1] + ', ' + addr;
+                    if (i < lines.length - 1 && !addressKeywords.test(lines[i + 1])) {
+                        addr = addr + ', ' + lines[i + 1];
+                    }
+                    address = addr;
+                    break;
+                }
+            }
+        }
+
+        if (!address && lines.length > 0) {
+            const skipPatterns = /^(?:tracking|order|invoice|bill|ship|from|date|time|ref|item|product|qty|weight|contents|fragile|urgent|express|cod|prepaid|paid)$/i;
+            for (const line of lines) {
+                if (line.length > 8 && !skipPatterns.test(line) && !trackingNumber?.includes(line)) {
+                    address = line;
+                    break;
+                }
+            }
+        }
+
+        if (!trackingNumber) {
+            trackingNumber = 'PKG-' + Date.now();
+        }
+
+        if (!address) return null;
 
         return {
             packageId: trackingNumber,
             recipientName: recipientName || 'Unknown',
-            address: address || 'Address not detected',
+            address: address,
             rawText: text
         };
     },

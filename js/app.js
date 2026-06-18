@@ -1,4 +1,5 @@
 let currentLocation = null;
+let routeMap = null;
 
 window.addEventListener('DOMContentLoaded', () => {
     initializeApp();
@@ -15,7 +16,6 @@ function initializeApp() {
 
     getCurrentLocation();
     loadSettings();
-    setInterval(updateDashboard, CONFIG.REFRESH_INTERVAL);
 }
 
 function setupEventListeners() {
@@ -139,6 +139,7 @@ function getCurrentLocation() {
                     lng: position.coords.longitude
                 };
                 updateLocationBadge(currentLocation);
+                updateDashboard();
             },
             (error) => {
                 console.error('Geolocation error:', error);
@@ -150,7 +151,7 @@ function getCurrentLocation() {
 
 function updateLocationBadge(location) {
     if (location) {
-        document.getElementById('current-location').textContent = 
+        document.getElementById('current-location').textContent =
             `📍 ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`;
     }
 }
@@ -169,11 +170,14 @@ function updateDashboard() {
         const estimatedTime = RouteOptimizer.calculateEstimatedTime(totalDistance);
         document.getElementById('stat-distance').textContent = `${totalDistance} km`;
         document.getElementById('stat-time').textContent = `${estimatedTime} min`;
+    } else {
+        document.getElementById('stat-distance').textContent = '0 km';
+        document.getElementById('stat-time').textContent = '0 min';
     }
 
     displayPackages();
-    displayRoutes();
     displayHistory();
+    displayDeliveryOrder();
 }
 
 function displayPackages() {
@@ -185,22 +189,36 @@ function displayPackages() {
         return;
     }
 
+    const pending = packages.filter(p => p.status === 'pending');
+    const delivered = packages.filter(p => p.status === 'delivered');
+
     let html = '';
-    packages.forEach(pkg => {
+
+    pending.forEach(pkg => {
         const hasCoords = pkg.latitude != null && pkg.longitude != null;
-        const distance = (currentLocation && hasCoords) ? 
+        const distance = (currentLocation && hasCoords) ?
             Maps.calculateDistance(currentLocation, { lat: pkg.latitude, lng: pkg.longitude }).toFixed(2) : 'N/A';
-        const statusClass = pkg.status === 'delivered' ? 'delivered' : 'pending';
-        const statusEmoji = pkg.status === 'delivered' ? '✅' : '⏳';
 
         html += `
             <div class="package-item">
                 <div class="package-info">
-                    <div class="package-name">${statusEmoji} ${pkg.name}</div>
+                    <div class="package-name">⏳ ${pkg.name}</div>
                     <div class="package-address">${pkg.address}</div>
                     <div class="package-distance">📍 ${distance} km away</div>
                 </div>
-                <span class="package-status ${statusClass}">${pkg.status.toUpperCase()}</span>
+                <span class="package-status pending">PENDING</span>
+            </div>
+        `;
+    });
+
+    delivered.forEach(pkg => {
+        html += `
+            <div class="package-item">
+                <div class="package-info">
+                    <div class="package-name">✅ ${pkg.name}</div>
+                    <div class="package-address">${pkg.address}</div>
+                </div>
+                <span class="package-status delivered">DELIVERED</span>
             </div>
         `;
     });
@@ -208,39 +226,140 @@ function displayPackages() {
     container.innerHTML = html;
 }
 
-function displayRoutes() {
+function displayDeliveryOrder() {
     const routes = Storage.getRoutes();
-    const container = document.getElementById('routes-list');
+    const container = document.getElementById('delivery-order');
+    const startBtn = document.getElementById('start-delivery');
 
-    if (routes.length === 0) {
-        container.innerHTML = '<p class="empty-state">No routes available. Optimize packages first.</p>';
+    if (!routes || routes.length === 0 || !routes[0].stops || routes[0].stops.length === 0) {
+        container.innerHTML = '<p class="empty-state">Scan packages first, then click "Optimize Route" to see the delivery order.</p>';
+        startBtn.style.display = 'none';
         return;
     }
 
-    let html = '';
-    routes.forEach((route, index) => {
+    const route = routes[0];
+    startBtn.style.display = 'inline-flex';
+
+    let html = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div>
+                <strong>${route.stops.length} stops</strong> &middot;
+                ${route.totalDistance} km total &middot;
+                ~${route.estimatedTime} min
+            </div>
+            <span class="route-badge">${route.status === 'in_progress' ? '🚚 IN PROGRESS' : '📋 READY'}</span>
+        </div>
+        <div class="delivery-stops">
+    `;
+
+    route.stops.forEach(stop => {
+        const isDelivered = stop.status === 'delivered';
+        const statusClass = isDelivered ? 'delivered' : 'pending';
+        const statusEmoji = isDelivered ? '✅' : '📍';
+
         html += `
-            <div class="route-card">
-                <div class="route-header">
-                    <div class="route-title">Route ${index + 1}</div>
-                    <div class="route-badge">${route.packages.length} packages</div>
-                </div>
-                <div class="route-stats">
-                    <div class="route-stat">
-                        <div class="route-stat-label">Distance</div>
-                        <div class="route-stat-value">${route.distance} km</div>
-                    </div>
-                    <div class="route-stat">
-                        <div class="route-stat-label">Est. Time</div>
-                        <div class="route-stat-value">${route.estimatedTime} min</div>
+            <div class="delivery-stop-item ${statusClass}" data-stop="${stop.stopLetter}">
+                <div class="stop-letter">${stop.stopLetter}</div>
+                <div class="stop-info">
+                    <div class="stop-name">${stop.name}</div>
+                    <div class="stop-address">${stop.address}</div>
+                    <div class="stop-distance">
+                        ${stop.stopNumber === 1 ? stop.distanceFromStart + ' km from you' : stop.distanceFromPrev + ' km from Stop ' + route.stops[stop.stopNumber - 2].stopLetter}
                     </div>
                 </div>
-                <div class="route-packages">${route.packages.map(p => p.name).join(', ')}</div>
+                <div class="stop-actions">
+                    <span class="stop-status ${statusClass}">${isDelivered ? 'DONE' : 'PENDING'}</span>
+                    ${!isDelivered ? `<button class="btn btn-sm btn-success" onclick="markStopDelivered('${stop.packageId}', '${stop.stopLetter}')">Mark Done</button>` : ''}
+                </div>
             </div>
         `;
     });
 
+    html += '</div>';
     container.innerHTML = html;
+}
+
+function markStopDelivered(packageId, stopLetter) {
+    Storage.updatePackage(packageId, { status: 'delivered' });
+
+    const routes = Storage.getRoutes();
+    if (routes && routes[0] && routes[0].stops) {
+        const stop = routes[0].stops.find(s => s.stopLetter === stopLetter);
+        if (stop) stop.status = 'delivered';
+        Storage.saveRoutes(routes);
+    }
+
+    updateDashboard();
+
+    const pending = Storage.getPackages().filter(p => p.status === 'pending');
+    if (pending.length === 0) {
+        showNotification('All packages delivered! Great job!', 'success');
+    } else {
+        showNotification(`Stop ${stopLetter} marked as delivered`, 'success');
+    }
+}
+
+function optimizeRoutes() {
+    if (!currentLocation) {
+        showNotification('Current location not available. Please allow location access.', 'error');
+        return;
+    }
+
+    const packages = Storage.getPackages().filter(p => p.status === 'pending');
+    if (packages.length === 0) {
+        showNotification('No pending packages to optimize', 'warning');
+        return;
+    }
+
+    const withCoords = packages.filter(p => p.latitude != null && p.longitude != null);
+    if (withCoords.length === 0) {
+        showNotification('No packages with valid addresses. Check geocoding.', 'warning');
+        return;
+    }
+
+    const routes = RouteOptimizer.optimizeRoutes(packages, currentLocation);
+    Storage.saveRoutes(routes);
+
+    initRouteMap();
+    const route = routes[0];
+    if (route && route.stops) {
+        Maps.displayRouteOnMap(route.stops, currentLocation);
+    }
+
+    displayDeliveryOrder();
+    showNotification(`Optimized! ${route.stops.length} stops in order`, 'success');
+    navigateToSection('routes');
+}
+
+function initRouteMap() {
+    if (routeMap) return;
+    if (typeof google === 'undefined' || !google.maps) return;
+
+    const mapEl = document.getElementById('route-map');
+    if (!mapEl) return;
+
+    routeMap = new google.maps.Map(mapEl, {
+        zoom: 12,
+        center: currentLocation || { lat: 20.5937, lng: 78.9629 },
+        mapTypeId: google.maps.MapTypeId.ROADMAP
+    });
+
+    Maps.setRouteMap(routeMap);
+}
+
+function startDeliveryRoute() {
+    const routes = Storage.getRoutes();
+    if (!routes || routes.length === 0 || !routes[0].stops || routes[0].stops.length === 0) {
+        showNotification('Please optimize routes first', 'warning');
+        return;
+    }
+
+    routes[0].status = 'in_progress';
+    Storage.saveRoutes(routes);
+
+    displayDeliveryOrder();
+    navigateToSection('routes');
+    showNotification('Delivery started! Follow the A→B→C order.', 'info');
 }
 
 function displayHistory() {
@@ -269,34 +388,6 @@ function displayHistory() {
     container.innerHTML = html;
 }
 
-function optimizeRoutes() {
-    if (!currentLocation) {
-        showNotification('Current location not available', 'error');
-        return;
-    }
-
-    const packages = Storage.getPackages().filter(p => p.status === 'pending');
-    if (packages.length === 0) {
-        showNotification('No pending packages to optimize', 'warning');
-        return;
-    }
-
-    const routes = RouteOptimizer.optimizeRoutes(packages, currentLocation);
-    Storage.saveRoutes(routes);
-    displayRoutes();
-    showNotification(`${routes.length} optimal route(s) created!`, 'success');
-}
-
-function startDeliveryRoute() {
-    const routes = Storage.getRoutes();
-    if (routes.length === 0) {
-        showNotification('Please optimize routes first', 'warning');
-        return;
-    }
-
-    showNotification('Starting delivery route...', 'info');
-}
-
 function loadSettings() {
     const settings = JSON.parse(localStorage.getItem('courier_settings') || '{}');
     if (settings.googleMapsApiKey) {
@@ -322,7 +413,11 @@ function saveSettings() {
     localStorage.setItem('courier_settings', JSON.stringify(settings));
     CONFIG.MAX_PACKAGE_DISTANCE = settings.maxDistance;
     CONFIG.AVERAGE_SPEED = settings.avgSpeed;
-    
+
+    if (settings.googleMapsApiKey) {
+        setGoogleMapsApiKey(settings.googleMapsApiKey);
+    }
+
     showNotification('Settings saved successfully!', 'success');
 }
 
@@ -346,5 +441,5 @@ function showNotification(message, type = 'info') {
 
     setTimeout(() => {
         notification.style.display = 'none';
-    }, 3000);
+    }, 3500);
 }
