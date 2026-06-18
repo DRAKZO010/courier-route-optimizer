@@ -36,8 +36,10 @@ function updateConfigFromStorage() {
     const settings = localStorage.getItem('courier_settings');
     if (settings) {
         const parsedSettings = JSON.parse(settings);
+        const allowedKeys = ['MAX_PACKAGE_DISTANCE', 'AVERAGE_SPEED', 'REFRESH_INTERVAL',
+            'ENABLE_NOTIFICATIONS', 'AUTO_OPTIMIZE_ROUTES', 'ENABLE_GPS_TRACKING'];
         for (const key of Object.keys(parsedSettings)) {
-            if (parsedSettings[key] !== undefined && parsedSettings[key] !== null) {
+            if (allowedKeys.includes(key) && parsedSettings[key] !== undefined && parsedSettings[key] !== null) {
                 CONFIG[key] = parsedSettings[key];
             }
         }
@@ -51,6 +53,35 @@ function saveConfigToStorage() {
 function setGoogleMapsApiKey(key) {
     CONFIG.GOOGLE_MAPS_API_KEY = key;
     localStorage.setItem('googleMapsApiKey', key);
+    loadGoogleMapsApi(key);
+}
+
+function loadGoogleMapsApi(key) {
+    if (!key || key === 'AIzaSyDemoKey') {
+        console.warn('No valid Google Maps API key. Maps features disabled.');
+        return;
+    }
+    const existing = document.querySelector(`script[src*="maps.googleapis.com"]`);
+    if (existing) return;
+
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places,geometry&callback=onGoogleMapsLoaded`;
+    script.async = true;
+    script.defer = true;
+    script.onerror = () => console.error('Failed to load Google Maps API');
+    document.head.appendChild(script);
+}
+
+function onGoogleMapsLoaded() {
+    console.log('Google Maps API loaded');
+    if (typeof Maps !== 'undefined' && typeof Maps.init === 'function') {
+        Maps.init('map');
+    }
+}
+
+const savedKey = localStorage.getItem('googleMapsApiKey');
+if (savedKey) {
+    loadGoogleMapsApi(savedKey);
 }
 
 updateConfigFromStorage();

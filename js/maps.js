@@ -4,6 +4,7 @@ let markers = [];
 let currentLocationMarker;
 let directionsService;
 let directionsRenderer;
+let activeRouteRenderer = null;
 
 const Maps = {
     setRouteMap: function (m) {
@@ -32,8 +33,6 @@ const Maps = {
             preserveViewport: true,
             suppressMarkers: true
         });
-
-        this.getCurrentLocation();
     },
 
     getCurrentLocation: function () {
@@ -59,14 +58,14 @@ const Maps = {
         }
     },
 
-    addCurrentLocationMarker: function (position) {
+    addCurrentLocationMarker: function (position, targetMap) {
         if (currentLocationMarker) {
             currentLocationMarker.setMap(null);
         }
         if (typeof google === 'undefined' || !google.maps) return;
         currentLocationMarker = new google.maps.Marker({
             position: position,
-            map: map,
+            map: targetMap || map,
             title: 'Your Location',
             icon: {
                 url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
@@ -148,8 +147,9 @@ const Maps = {
         if (!targetMap) return;
 
         this.clearMarkers(targetMap);
-        if (directionsRenderer) {
-            directionsRenderer.setDirections({ routes: [] });
+        if (activeRouteRenderer) {
+            activeRouteRenderer.setDirections({ routes: [] });
+            activeRouteRenderer = null;
         }
 
         if (!currentLocation || !stops || stops.length === 0) return;
@@ -173,7 +173,7 @@ const Maps = {
         targetMap.fitBounds(bounds, 50);
 
         if (stops.length >= 1 && typeof google !== 'undefined' && google.maps) {
-            const tempRenderer = new google.maps.DirectionsRenderer({
+            activeRouteRenderer = new google.maps.DirectionsRenderer({
                 map: targetMap,
                 preserveViewport: true,
                 suppressMarkers: true
@@ -195,7 +195,7 @@ const Maps = {
             const ds = new google.maps.DirectionsService();
             ds.route(request, (result, status) => {
                 if (status === 'OK') {
-                    tempRenderer.setDirections(result);
+                    activeRouteRenderer.setDirections(result);
                 } else {
                     console.warn('Directions request failed:', status);
                     this.drawStraightLines(currentLocation, stops, targetMap);

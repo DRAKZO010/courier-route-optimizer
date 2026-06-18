@@ -16,7 +16,7 @@ const Storage = {
 
     updatePackage: function(packageId, updates) {
         const packages = this.getPackages();
-        const index = packages.findIndex(p => p.id === packageId);
+        const index = packages.findIndex(p => p.packageId === packageId || p.id === packageId);
         if (index !== -1) {
             packages[index] = { ...packages[index], ...updates };
             localStorage.setItem(CONFIG.STORAGE_KEYS.PACKAGES, JSON.stringify(packages));
@@ -27,7 +27,7 @@ const Storage = {
 
     deletePackage: function(packageId) {
         let packages = this.getPackages();
-        packages = packages.filter(p => p.id !== packageId);
+        packages = packages.filter(p => p.packageId !== packageId && p.id !== packageId);
         localStorage.setItem(CONFIG.STORAGE_KEYS.PACKAGES, JSON.stringify(packages));
     },
 

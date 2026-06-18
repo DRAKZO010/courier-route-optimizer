@@ -188,11 +188,11 @@ const Scanner = {
 
         let trackingNumber = null;
         const trackingPatterns = [
-            /\b(TRK[-\s]?\d{4,10})\b/i,
-            /\b(PKG[-\s]?\d{4,10})\b/i,
-            /\b(AWB[-\s]?\d{6,12})\b/i,
-            /\b(DOC[-\s]?\d{4,10})\b/i,
-            /\b([A-Z]{2,4}[-\s]?\d{6,12})\b/,
+            /\b(TRK[-:\s]?\d{4,10})\b/i,
+            /\b(PKG[-:\s]?\d{4,10})\b/i,
+            /\b(AWB[-:\s]?\d{6,12})\b/i,
+            /\b(DOC[-:\s]?\d{4,10})\b/i,
+            /\b([A-Z]{2,4}[-:\s]?\d{6,12})\b/,
             /\b(\d{10,20})\b/
         ];
         for (const line of lines) {
@@ -230,49 +230,71 @@ const Scanner = {
             }
         }
 
+        const skipPatterns = /^(?:tracking|order|invoice|bill|ship|from|date|time|ref|item|product|qty|weight|contents|fragile|urgent|express|cod|prepaid|paid|phone|tel|mobile|email|fax|phone|call|no|number|dob|gst|tin)$/i;
+        const isMetadataLine = (line) => {
+            if (trackingNumber && line.includes(trackingNumber)) return true;
+            if (skipPatterns.test(line)) return true;
+            if (/^\d{10,20}$/.test(line)) return true;
+            if (/^[A-Z]{2,4}[-:\s]?\d{6,12}$/.test(line)) return true;
+            return false;
+        };
+
         let address = null;
         const addressKeywords = /(?:address|delivery|ship\s*to|dest|deliver\s*at|location|place|door|flat|house|apartment|floor|building|tower|block|sector|colony|nagar|road|street|avenue|lane|drive|way|blvd|park|extension|enclave|layout|scheme|mohali|phase|dist|district|state|pin|pincode|zip)/i;
-        for (const line of lines) {
-            if (addressKeywords.test(line) && line.length > 5) {
-                address = line.replace(/^(?:address|delivery|ship\s*to|dest|deliver\s*at|location|place)[:\s]*/i, '').trim();
+
+        let addressStartIdx = -1;
+        for (let i = 0; i < lines.length; i++) {
+            if (addressKeywords.test(lines[i]) && lines[i].length > 5) {
+                addressStartIdx = i;
                 break;
             }
         }
 
-        if (!address) {
+        if (addressStartIdx === -1) {
             const streetPattern = /\d{1,6}\s+[\w\s,.-]+(?:st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|way|ct|court|pl|place|nagar|road|lane|colony|extension|enclave|marg)\b/i;
-            for (const line of lines) {
-                const match = line.match(streetPattern);
-                if (match) {
-                    address = match[0].trim();
-                    break;
-                }
-            }
-        }
-
-        if (!address) {
-            const pincodePattern = /\b\d{5,6}\b/;
             for (let i = 0; i < lines.length; i++) {
-                if (pincodePattern.test(lines[i])) {
-                    let addr = lines[i];
-                    if (i > 0) addr = lines[i - 1] + ', ' + addr;
-                    if (i < lines.length - 1 && !addressKeywords.test(lines[i + 1])) {
-                        addr = addr + ', ' + lines[i + 1];
-                    }
-                    address = addr;
+                if (streetPattern.test(lines[i])) {
+                    addressStartIdx = i;
                     break;
                 }
             }
         }
 
-        if (!address && lines.length > 0) {
-            const skipPatterns = /^(?:tracking|order|invoice|bill|ship|from|date|time|ref|item|product|qty|weight|contents|fragile|urgent|express|cod|prepaid|paid)$/i;
-            for (const line of lines) {
-                if (line.length > 8 && !skipPatterns.test(line) && !trackingNumber?.includes(line)) {
-                    address = line;
+        if (addressStartIdx === -1) {
+            for (let i = 0; i < lines.length; i++) {
+                if (/\b\d{5,6}\b/.test(lines[i]) && lines[i].length > 5) {
+                    addressStartIdx = i;
                     break;
                 }
             }
+        }
+
+        if (addressStartIdx === -1 && lines.length > 0) {
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].length > 8 && !isMetadataLine(lines[i]) && !recipientName?.includes(lines[i])) {
+                    addressStartIdx = i;
+                    break;
+                }
+            }
+        }
+
+        if (addressStartIdx !== -1) {
+            let addressLines = [];
+            let cleaned = lines[addressStartIdx]
+                .replace(/^(?:address|delivery|ship\s*to|dest|deliver\s*at|location|place)[:\s]*/i, '')
+                .trim();
+            addressLines.push(cleaned);
+
+            for (let i = addressStartIdx + 1; i < lines.length; i++) {
+                const line = lines[i];
+                if (isMetadataLine(line)) break;
+                if (recipientName && line.includes(recipientName)) break;
+                if (/^(?:to|recipient|name|attn|consignee)[:\s]/i.test(line)) break;
+                if (line.length < 3) break;
+                addressLines.push(line);
+            }
+
+            address = addressLines.join(', ');
         }
 
         if (!trackingNumber) {

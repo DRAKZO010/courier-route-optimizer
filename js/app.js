@@ -9,7 +9,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function initializeApp() {
     try {
-        Maps.init('map');
+        if (typeof google !== 'undefined' && google.maps) {
+            Maps.init('map');
+        }
     } catch (e) {
         console.error('Map initialization error:', e);
     }
@@ -125,6 +127,9 @@ function switchScannerMode(mode) {
     document.getElementById(`${mode}-mode`).classList.add('active');
     document.querySelector(`[data-mode="${mode}"]`).classList.add('active');
 
+    if (mode !== 'ocr') {
+        Scanner.stopOCRScanner();
+    }
     if (mode === 'ocr') {
         Scanner.initOCRScanner();
     }
@@ -252,10 +257,11 @@ function displayDeliveryOrder() {
         <div class="delivery-stops">
     `;
 
-    route.stops.forEach(stop => {
+    route.stops.forEach((stop, idx) => {
         const isDelivered = stop.status === 'delivered';
         const statusClass = isDelivered ? 'delivered' : 'pending';
         const statusEmoji = isDelivered ? '✅' : '📍';
+        const prevLetter = idx > 0 ? route.stops[idx - 1].stopLetter : null;
 
         html += `
             <div class="delivery-stop-item ${statusClass}" data-stop="${stop.stopLetter}">
@@ -264,7 +270,7 @@ function displayDeliveryOrder() {
                     <div class="stop-name">${stop.name}</div>
                     <div class="stop-address">${stop.address}</div>
                     <div class="stop-distance">
-                        ${stop.stopNumber === 1 ? stop.distanceFromStart + ' km from you' : stop.distanceFromPrev + ' km from Stop ' + route.stops[stop.stopNumber - 2].stopLetter}
+                        ${idx === 0 ? stop.distanceFromStart + ' km from you' : stop.distanceFromPrev + ' km from Stop ' + prevLetter}
                     </div>
                 </div>
                 <div class="stop-actions">
@@ -280,7 +286,16 @@ function displayDeliveryOrder() {
 }
 
 function markStopDelivered(packageId, stopLetter) {
-    Storage.updatePackage(packageId, { status: 'delivered' });
+    const pkg = Storage.updatePackage(packageId, { status: 'delivered' });
+
+    if (pkg) {
+        Storage.addToHistory({
+            packageId: pkg.packageId,
+            packageName: pkg.name,
+            address: pkg.address,
+            stopLetter: stopLetter
+        });
+    }
 
     const routes = Storage.getRoutes();
     if (routes && routes[0] && routes[0].stops) {
