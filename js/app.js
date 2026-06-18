@@ -41,6 +41,18 @@ function setupEventListeners() {
         document.getElementById('stop-ocr-scan').style.display = 'none';
     });
 
+    document.getElementById('upload-image-btn').addEventListener('click', () => {
+        document.getElementById('ocr-file-input').click();
+    });
+
+    document.getElementById('ocr-file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            Scanner.uploadAndRecognize(file);
+        }
+        e.target.value = '';
+    });
+
     document.getElementById('manual-entry-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const formData = {
@@ -80,6 +92,9 @@ function setupEventListeners() {
         document.getElementById('scan-result').style.display = 'none';
         document.getElementById('ocr-extracted-text').style.display = 'none';
         document.getElementById('ocr-text-output').value = '';
+        document.getElementById('ocr-upload-preview').style.display = 'none';
+        document.getElementById('ocr-upload-preview').src = '';
+        document.getElementById('ocr-video').style.display = '';
         document.getElementById('manual-entry-form').reset();
         navigateToSection('scanner');
     });

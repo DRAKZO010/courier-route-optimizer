@@ -109,12 +109,15 @@
                             <div class="scanner-preview">
                                 <video id="ocr-video" style="width: 100%; max-width: 500px; border-radius: 8px;"></video>
                                 <canvas id="ocr-canvas" style="display: none;"></canvas>
+                                <img id="ocr-upload-preview" style="display: none; max-width: 500px; border-radius: 8px; max-height: 400px; object-fit: contain;">
+                                <input type="file" id="ocr-file-input" accept="image/*" style="display: none;">
                             </div>
                             <div class="scanner-controls">
                                 <button class="btn btn-primary" id="start-ocr-scan">📸 Capture & Scan</button>
                                 <button class="btn btn-secondary" id="stop-ocr-scan" style="display: none;">⛔ Stop Scan</button>
+                                <button class="btn btn-secondary" id="upload-image-btn">🖼️ Upload from Gallery</button>
                             </div>
-                            <p class="scanner-hint">Point your camera at the package label, then capture to extract text via OCR</p>
+                            <p class="scanner-hint">Point your camera at the package label, then capture to extract text via OCR — or upload an image from your gallery</p>
                             <div id="ocr-progress" style="display: none; margin-top: 1rem;">
                                 <div style="background: #e2e8f0; border-radius: 8px; height: 8px; overflow: hidden;">
                                     <div id="ocr-progress-bar" style="background: var(--primary-color); height: 100%; width: 0%; transition: width 0.3s;"></div>

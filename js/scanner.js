@@ -57,6 +57,7 @@ const Scanner = {
         }
 
         document.getElementById('ocr-progress').style.display = 'block';
+        document.getElementById('ocr-upload-preview').style.display = 'none';
         this.updateProgress(0, 'Initializing OCR engine...');
 
         const worker = await this.initTesseractWorker();
@@ -100,6 +101,78 @@ const Scanner = {
         setTimeout(() => {
             document.getElementById('ocr-progress').style.display = 'none';
         }, 1500);
+    },
+
+    uploadAndRecognize: async function (file) {
+        if (!file || !file.type.startsWith('image/')) {
+            showNotification('Please select a valid image file', 'error');
+            return;
+        }
+
+        const preview = document.getElementById('ocr-upload-preview');
+        const canvas = document.getElementById('ocr-canvas');
+        const ctx = canvas.getContext('2d');
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            preview.src = e.target.result;
+            preview.style.display = 'block';
+            document.getElementById('ocr-video').style.display = 'none';
+
+            document.getElementById('ocr-progress').style.display = 'block';
+            this.updateProgress(0, 'Initializing OCR engine...');
+
+            const worker = await this.initTesseractWorker();
+            if (!worker) return;
+
+            this.updateProgress(10, 'Loading image...');
+
+            try {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    img.src = e.target.result;
+                });
+
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                ctx.drawImage(img, 0, 0);
+
+                this.updateProgress(30, 'Recognizing text...');
+
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const result = await worker.recognize(imageData);
+                const text = result.data.text.trim();
+
+                this.updateProgress(100, 'Scan complete!');
+
+                if (text.length === 0) {
+                    showNotification('No text detected in image. Try a clearer image.', 'warning');
+                    document.getElementById('ocr-progress').style.display = 'none';
+                    return;
+                }
+
+                document.getElementById('ocr-text-output').value = text;
+                document.getElementById('ocr-extracted-text').style.display = 'block';
+
+                const parsed = this.parseOCRText(text);
+                if (parsed) {
+                    this.processScannedData(parsed);
+                } else {
+                    showNotification('Text detected but could not parse package info. Review below.', 'warning');
+                }
+            } catch (err) {
+                console.error('OCR upload error:', err);
+                showNotification('OCR processing failed on uploaded image', 'error');
+            }
+
+            setTimeout(() => {
+                document.getElementById('ocr-progress').style.display = 'none';
+            }, 1500);
+        };
+        reader.readAsDataURL(file);
     },
 
     parseOCRText: function (text) {
