@@ -59,8 +59,6 @@ function setupEventListeners() {
             packageId: document.getElementById('package-id').value,
             recipientName: document.getElementById('recipient-name').value,
             deliveryAddress: document.getElementById('delivery-address').value,
-            latitude: parseFloat(document.getElementById('latitude').value) || null,
-            longitude: parseFloat(document.getElementById('longitude').value) || null,
             phoneNumber: document.getElementById('phone-number').value
         };
         Scanner.handleManualEntry(formData);

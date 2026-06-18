@@ -288,26 +288,63 @@ const Scanner = {
     },
 
     handleManualEntry: function (formData) {
-        if (formData.latitude && formData.longitude) {
-            this.savePackage(formData);
-        } else if (formData.deliveryAddress || formData.address) {
-            const address = formData.deliveryAddress || formData.address;
-            Maps.geocodeAddress(address)
-                .then(coords => {
-                    formData.latitude = coords.lat;
-                    formData.longitude = coords.lng;
-                    this.savePackage(formData);
-                })
-                .catch(err => {
-                    console.error('Geocoding error:', err);
-                    showNotification('Could not geocode address. Package saved without coordinates.', 'warning');
-                    formData.latitude = null;
-                    formData.longitude = null;
-                    this.savePackage(formData);
-                });
+        const address = formData.deliveryAddress || formData.address;
+        if (address) {
+            const pincode = this.extractPincode(address);
+            if (pincode) {
+                Maps.geocodeByPincode(pincode)
+                    .then(coords => {
+                        formData.latitude = coords.lat;
+                        formData.longitude = coords.lng;
+                        this.savePackage(formData);
+                    })
+                    .catch(() => {
+                        return Maps.geocodeAddress(address);
+                    })
+                    .then(coords => {
+                        if (coords) {
+                            formData.latitude = coords.lat;
+                            formData.longitude = coords.lng;
+                        }
+                        this.savePackage(formData);
+                    })
+                    .catch(err => {
+                        console.error('Geocoding error:', err);
+                        showNotification('Could not geocode address. Package saved without coordinates.', 'warning');
+                        formData.latitude = null;
+                        formData.longitude = null;
+                        this.savePackage(formData);
+                    });
+            } else {
+                Maps.geocodeAddress(address)
+                    .then(coords => {
+                        formData.latitude = coords.lat;
+                        formData.longitude = coords.lng;
+                        this.savePackage(formData);
+                    })
+                    .catch(err => {
+                        console.error('Geocoding error:', err);
+                        showNotification('Could not geocode address. Package saved without coordinates.', 'warning');
+                        formData.latitude = null;
+                        formData.longitude = null;
+                        this.savePackage(formData);
+                    });
+            }
         } else {
             this.savePackage(formData);
         }
+    },
+
+    extractPincode: function (address) {
+        const pinPatterns = [
+            /\b(\d{6})\b/,
+            /\b(\d{5})\b/
+        ];
+        for (const pattern of pinPatterns) {
+            const match = address.match(pattern);
+            if (match) return match[1];
+        }
+        return null;
     },
 
     savePackage: function (packageData) {
