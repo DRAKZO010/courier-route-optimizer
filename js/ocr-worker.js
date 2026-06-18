@@ -1,4 +1,4 @@
-importScripts('https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js');
+importScripts('https://unpkg.com/tesseract.js@v5.1.1/dist/tesseract.min.js');
 
 let ocrReady = false;
 let worker = null;

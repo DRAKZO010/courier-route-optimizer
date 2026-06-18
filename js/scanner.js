@@ -1,5 +1,6 @@
 let ocrStream = null;
 let ocrWorker = null;
+let ocrReady = false;
 
 const Scanner = {
     initOCRScanner: function () {
@@ -28,20 +29,33 @@ const Scanner = {
     },
 
     initTesseractWorker: async function () {
-        if (ocrWorker) return ocrWorker;
+        if (ocrReady && ocrWorker) return ocrWorker;
+
         try {
+            document.getElementById('ocr-status').textContent = 'Loading OCR engine...';
+
             ocrWorker = await Tesseract.createWorker('eng', 1, {
                 logger: (info) => {
                     if (info.status === 'recognizing text') {
                         const pct = Math.round(info.progress * 100);
                         this.updateProgress(pct, 'Recognizing text...');
+                    } else if (info.status === 'loading language traineddata') {
+                        const pct = Math.round(info.progress * 100);
+                        this.updateProgress(pct, 'Loading language data...');
+                    } else if (info.status === 'initializing api') {
+                        this.updateProgress(50, 'Initializing OCR API...');
                     }
                 }
             });
+
+            ocrReady = true;
+            console.log('Tesseract worker ready');
             return ocrWorker;
         } catch (err) {
             console.error('Tesseract init error:', err);
-            showNotification('Failed to initialize OCR engine', 'error');
+            ocrReady = false;
+            ocrWorker = null;
+            showNotification('Failed to initialize OCR engine: ' + err.message, 'error');
             return null;
         }
     },
@@ -70,10 +84,8 @@ const Scanner = {
         this.updateProgress(10, 'Capturing image...');
 
         try {
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             this.updateProgress(20, 'Processing image...');
-
-            const result = await worker.recognize(imageData);
+            const result = await worker.recognize(canvas);
             const text = result.data.text.trim();
 
             this.updateProgress(100, 'Scan complete!');
@@ -95,7 +107,7 @@ const Scanner = {
             }
         } catch (err) {
             console.error('OCR error:', err);
-            showNotification('OCR processing failed', 'error');
+            showNotification('OCR processing failed: ' + err.message, 'error');
         }
 
         setTimeout(() => {
@@ -113,66 +125,61 @@ const Scanner = {
         const canvas = document.getElementById('ocr-canvas');
         const ctx = canvas.getContext('2d');
 
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            preview.src = e.target.result;
+        document.getElementById('ocr-progress').style.display = 'block';
+        this.updateProgress(0, 'Initializing OCR engine...');
+
+        const worker = await this.initTesseractWorker();
+        if (!worker) return;
+
+        this.updateProgress(10, 'Loading image...');
+
+        try {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+                img.src = URL.createObjectURL(file);
+            });
+
+            preview.src = img.src;
             preview.style.display = 'block';
             document.getElementById('ocr-video').style.display = 'none';
 
-            document.getElementById('ocr-progress').style.display = 'block';
-            this.updateProgress(0, 'Initializing OCR engine...');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            ctx.drawImage(img, 0, 0);
 
-            const worker = await this.initTesseractWorker();
-            if (!worker) return;
+            this.updateProgress(30, 'Recognizing text...');
 
-            this.updateProgress(10, 'Loading image...');
+            const result = await worker.recognize(canvas);
+            const text = result.data.text.trim();
 
-            try {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                await new Promise((resolve, reject) => {
-                    img.onload = resolve;
-                    img.onerror = reject;
-                    img.src = e.target.result;
-                });
+            this.updateProgress(100, 'Scan complete!');
 
-                canvas.width = img.naturalWidth;
-                canvas.height = img.naturalHeight;
-                ctx.drawImage(img, 0, 0);
-
-                this.updateProgress(30, 'Recognizing text...');
-
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const result = await worker.recognize(imageData);
-                const text = result.data.text.trim();
-
-                this.updateProgress(100, 'Scan complete!');
-
-                if (text.length === 0) {
-                    showNotification('No text detected in image. Try a clearer image.', 'warning');
-                    document.getElementById('ocr-progress').style.display = 'none';
-                    return;
-                }
-
-                document.getElementById('ocr-text-output').value = text;
-                document.getElementById('ocr-extracted-text').style.display = 'block';
-
-                const parsed = this.parseOCRText(text);
-                if (parsed) {
-                    this.processScannedData(parsed);
-                } else {
-                    showNotification('Text detected but could not parse package info. Review below.', 'warning');
-                }
-            } catch (err) {
-                console.error('OCR upload error:', err);
-                showNotification('OCR processing failed on uploaded image', 'error');
+            if (text.length === 0) {
+                showNotification('No text detected in image. Try a clearer image.', 'warning');
+                document.getElementById('ocr-progress').style.display = 'none';
+                return;
             }
 
-            setTimeout(() => {
-                document.getElementById('ocr-progress').style.display = 'none';
-            }, 1500);
-        };
-        reader.readAsDataURL(file);
+            document.getElementById('ocr-text-output').value = text;
+            document.getElementById('ocr-extracted-text').style.display = 'block';
+
+            const parsed = this.parseOCRText(text);
+            if (parsed) {
+                this.processScannedData(parsed);
+            } else {
+                showNotification('Text detected but could not parse package info. Review below.', 'warning');
+            }
+        } catch (err) {
+            console.error('OCR upload error:', err);
+            showNotification('OCR processing failed: ' + err.message, 'error');
+        }
+
+        setTimeout(() => {
+            document.getElementById('ocr-progress').style.display = 'none';
+        }, 1500);
     },
 
     parseOCRText: function (text) {
@@ -265,6 +272,7 @@ const Scanner = {
         if (ocrWorker) {
             ocrWorker.terminate();
             ocrWorker = null;
+            ocrReady = false;
         }
     },
 
