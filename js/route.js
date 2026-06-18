@@ -2,10 +2,13 @@ const RouteOptimizer = {
     optimizeRoutes: function(packages, currentLocation) {
         if (packages.length === 0) return [];
 
+        const validPackages = packages.filter(p => p.latitude != null && p.longitude != null);
+        if (validPackages.length === 0) return [];
+
         const routes = [];
         let currentRoute = [currentLocation];
         let routeDistance = 0;
-        let remainingPackages = [...packages];
+        let remainingPackages = [...validPackages];
 
         while (remainingPackages.length > 0) {
             let nearestPackage = null;
@@ -96,12 +99,14 @@ const RouteOptimizer = {
         let lastLocation = currentLocation;
 
         packages.forEach(pkg => {
-            const distance = Maps.calculateDistance(
-                lastLocation,
-                { lat: pkg.latitude || 0, lng: pkg.longitude || 0 }
-            );
-            total += distance;
-            lastLocation = { lat: pkg.latitude || 0, lng: pkg.longitude || 0 };
+            if (pkg.latitude != null && pkg.longitude != null) {
+                const distance = Maps.calculateDistance(
+                    lastLocation,
+                    { lat: pkg.latitude, lng: pkg.longitude }
+                );
+                total += distance;
+                lastLocation = { lat: pkg.latitude, lng: pkg.longitude };
+            }
         });
 
         return total.toFixed(2);

@@ -135,11 +135,11 @@ const Scanner = {
 
         try {
             const img = new Image();
-            img.crossOrigin = 'anonymous';
+            const objectUrl = URL.createObjectURL(file);
             await new Promise((resolve, reject) => {
                 img.onload = resolve;
                 img.onerror = reject;
-                img.src = URL.createObjectURL(file);
+                img.src = objectUrl;
             });
 
             preview.src = img.src;
@@ -149,6 +149,7 @@ const Scanner = {
             canvas.width = img.naturalWidth;
             canvas.height = img.naturalHeight;
             ctx.drawImage(img, 0, 0);
+            URL.revokeObjectURL(objectUrl);
 
             this.updateProgress(30, 'Recognizing text...');
 
@@ -260,7 +261,11 @@ const Scanner = {
     updateProgress: function (pct, message) {
         const bar = document.getElementById('ocr-progress-bar');
         const status = document.getElementById('ocr-status');
-        if (bar) bar.style.width = pct + '%';
+        if (bar) {
+            bar.style.width = pct + '%';
+            if (pct === 0) bar.style.transition = 'none';
+            else bar.style.transition = 'width 0.3s';
+        }
         if (status) status.textContent = message;
     },
 
@@ -291,46 +296,27 @@ const Scanner = {
         const address = formData.deliveryAddress || formData.address;
         if (address) {
             const pincode = this.extractPincode(address);
-            if (pincode) {
-                Maps.geocodeByPincode(pincode)
-                    .then(coords => {
-                        formData.latitude = coords.lat;
-                        formData.longitude = coords.lng;
-                        this.savePackage(formData);
-                    })
-                    .catch(() => {
-                        return Maps.geocodeAddress(address);
-                    })
-                    .then(coords => {
-                        if (coords) {
-                            formData.latitude = coords.lat;
-                            formData.longitude = coords.lng;
-                        }
-                        this.savePackage(formData);
-                    })
-                    .catch(err => {
-                        console.error('Geocoding error:', err);
-                        showNotification('Could not geocode address. Package saved without coordinates.', 'warning');
-                        formData.latitude = null;
-                        formData.longitude = null;
-                        this.savePackage(formData);
-                    });
-            } else {
-                Maps.geocodeAddress(address)
-                    .then(coords => {
-                        formData.latitude = coords.lat;
-                        formData.longitude = coords.lng;
-                        this.savePackage(formData);
-                    })
-                    .catch(err => {
-                        console.error('Geocoding error:', err);
-                        showNotification('Could not geocode address. Package saved without coordinates.', 'warning');
-                        formData.latitude = null;
-                        formData.longitude = null;
-                        this.savePackage(formData);
-                    });
-            }
+            const geocodeFn = pincode
+                ? () => Maps.geocodeByPincode(pincode).catch(() => Maps.geocodeAddress(address))
+                : () => Maps.geocodeAddress(address);
+
+            geocodeFn()
+                .then(coords => {
+                    formData.latitude = coords.lat;
+                    formData.longitude = coords.lng;
+                })
+                .catch(err => {
+                    console.error('Geocoding error:', err);
+                    showNotification('Could not geocode address. Saved without coordinates.', 'warning');
+                    formData.latitude = null;
+                    formData.longitude = null;
+                })
+                .finally(() => {
+                    this.savePackage(formData);
+                });
         } else {
+            formData.latitude = null;
+            formData.longitude = null;
             this.savePackage(formData);
         }
     },

@@ -187,7 +187,8 @@ function displayPackages() {
 
     let html = '';
     packages.forEach(pkg => {
-        const distance = currentLocation ? 
+        const hasCoords = pkg.latitude != null && pkg.longitude != null;
+        const distance = (currentLocation && hasCoords) ? 
             Maps.calculateDistance(currentLocation, { lat: pkg.latitude, lng: pkg.longitude }).toFixed(2) : 'N/A';
         const statusClass = pkg.status === 'delivered' ? 'delivered' : 'pending';
         const statusEmoji = pkg.status === 'delivered' ? '✅' : '⏳';

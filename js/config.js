@@ -36,7 +36,11 @@ function updateConfigFromStorage() {
     const settings = localStorage.getItem('courier_settings');
     if (settings) {
         const parsedSettings = JSON.parse(settings);
-        Object.assign(CONFIG, parsedSettings);
+        for (const key of Object.keys(parsedSettings)) {
+            if (parsedSettings[key] !== undefined && parsedSettings[key] !== null) {
+                CONFIG[key] = parsedSettings[key];
+            }
+        }
     }
 }
 

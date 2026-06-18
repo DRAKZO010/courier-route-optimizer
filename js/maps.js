@@ -6,6 +6,11 @@ let directionsRenderer;
 
 const Maps = {
     init: function(elementId = 'map') {
+        if (typeof google === 'undefined' || !google.maps) {
+            console.warn('Google Maps API not loaded. Map features disabled.');
+            return;
+        }
+
         const center = { lat: 40.7128, lng: -74.0060 };
 
         map = new google.maps.Map(document.getElementById(elementId), {
@@ -59,6 +64,7 @@ const Maps = {
     },
 
     addMarker: function(position, title, packageId) {
+        if (typeof google === 'undefined' || !google.maps) return null;
         const marker = new google.maps.Marker({
             position: position,
             map: map,
@@ -99,6 +105,7 @@ const Maps = {
 
     drawRoute: function(waypoints) {
         if (waypoints.length < 2) return;
+        if (typeof google === 'undefined' || !google.maps) return;
 
         const request = {
             origin: waypoints[0],
@@ -119,6 +126,10 @@ const Maps = {
 
     geocodeAddress: function(address) {
         return new Promise((resolve, reject) => {
+            if (typeof google === 'undefined' || !google.maps) {
+                reject('Google Maps API not loaded');
+                return;
+            }
             const geocoder = new google.maps.Geocoder();
             geocoder.geocode({ address: address }, (results, status) => {
                 if (status === 'OK') {
@@ -135,6 +146,10 @@ const Maps = {
 
     geocodeByPincode: function(pincode) {
         return new Promise((resolve, reject) => {
+            if (typeof google === 'undefined' || !google.maps) {
+                reject('Google Maps API not loaded');
+                return;
+            }
             const geocoder = new google.maps.Geocoder();
             geocoder.geocode({ address: pincode }, (results, status) => {
                 if (status === 'OK') {
