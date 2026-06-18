@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Courier Route Optimizer</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDemoKey&libraries=places,geometry"></script>
+    <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="logo">🚚 Courier Optimizer</h1>
+                <div class="header-info">
+                    <span id="current-location" class="location-badge">📍 Getting location...</span>
+                    <span id="package-count" class="package-badge">📦 0 packages</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Sidebar Navigation -->
+            <aside class="sidebar">
+                <nav class="nav-menu">
+                    <button class="nav-btn active" data-section="dashboard">📊 Dashboard</button>
+                    <button class="nav-btn" data-section="scanner">📱 Scan Package</button>
+                    <button class="nav-btn" data-section="routes">🗺️ Routes</button>
+                    <button class="nav-btn" data-section="history">✅ History</button>
+                    <button class="nav-btn" data-section="settings">⚙️ Settings</button>
+                </nav>
+            </aside>
+
+            <!-- Content Area -->
+            <section class="content-area">
+                
+                <!-- Dashboard Section -->
+                <div id="dashboard" class="section active">
+                    <div class="section-header">
+                        <h2>Delivery Dashboard</h2>
+                        <button class="btn btn-primary" id="start-delivery">▶️ Start Delivery Route</button>
+                    </div>
+
+                    <div class="dashboard-grid">
+                        <!-- Stats Cards -->
+                        <div class="stats-container">
+                            <div class="stat-card">
+                                <div class="stat-icon">📦</div>
+                                <div class="stat-content">
+                                    <p class="stat-label">Total Packages</p>
+                                    <p class="stat-value" id="stat-total">0</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">🚗</div>
+                                <div class="stat-content">
+                                    <p class="stat-label">Total Distance</p>
+                                    <p class="stat-value" id="stat-distance">0 km</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">⏱️</div>
+                                <div class="stat-content">
+                                    <p class="stat-label">Est. Time</p>
+                                    <p class="stat-value" id="stat-time">0 min</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">✅</div>
+                                <div class="stat-content">
+                                    <p class="stat-label">Delivered</p>
+                                    <p class="stat-value" id="stat-delivered">0</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Map Container -->
+                        <div class="map-container">
+                            <div id="map" style="width: 100%; height: 400px; border-radius: 8px;"></div>
+                        </div>
+
+                        <!-- Packages List -->
+                        <div class="packages-list">
+                            <h3>📦 Pending Deliveries</h3>
+                            <div id="packages-container" class="packages-scroll">
+                                <p class="empty-state">No packages scanned yet. Start by scanning a package!</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scanner Section -->
+                <div id="scanner" class="section">
+                    <div class="section-header">
+                        <h2>Package Scanner</h2>
+                    </div>
+
+                    <div class="scanner-container">
+                        <div class="scanner-modes">
+                            <button class="mode-btn active" data-mode="barcode">📊 Barcode Scanner</button>
+                            <button class="mode-btn" data-mode="manual">✏️ Manual Entry</button>
+                        </div>
+
+                        <!-- Barcode Scanner Mode -->
+                        <div id="barcode-mode" class="mode-content active">
+                            <div class="scanner-preview">
+                                <video id="barcode-video" style="width: 100%; max-width: 500px; border-radius: 8px;"></video>
+                                <canvas id="barcode-canvas" style="display: none;"></canvas>
+                            </div>
+                            <div class="scanner-controls">
+                                <button class="btn btn-primary" id="start-barcode-scan">🎯 Start Scan</button>
+                                <button class="btn btn-secondary" id="stop-barcode-scan" style="display: none;">⛔ Stop Scan</button>
+                            </div>
+                            <p class="scanner-hint">Point your camera at the barcode or QR code on the package</p>
+                        </div>
+
+                        <!-- Manual Entry Mode -->
+                        <div id="manual-mode" class="mode-content">
+                            <form id="manual-entry-form" class="form">
+                                <div class="form-group">
+                                    <label for="package-id">Package ID / Tracking Number</label>
+                                    <input type="text" id="package-id" placeholder="e.g., PKG-123456" required>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="recipient-name">Recipient Name</label>
+                                    <input type="text" id="recipient-name" placeholder="Full name" required>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="delivery-address">Delivery Address</label>
+                                    <input type="text" id="delivery-address" placeholder="Street address, city, postal code" required>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="latitude">Latitude</label>
+                                        <input type="number" id="latitude" placeholder="e.g., 40.7128" step="0.0001">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="longitude">Longitude</label>
+                                        <input type="number" id="longitude" placeholder="e.g., -74.0060" step="0.0001">
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="phone-number">Phone Number</label>
+                                    <input type="tel" id="phone-number" placeholder="+1 (555) 123-4567">
+                                </div>
+
+                                <button type="submit" class="btn btn-primary btn-block">➕ Add Package</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Scanned Result -->
+                    <div id="scan-result" class="scan-result" style="display: none;">
+                        <h3>✅ Package Added Successfully</h3>
+                        <div class="result-details">
+                            <p><strong>Tracking Number:</strong> <span id="result-tracking"></span></p>
+                            <p><strong>Address:</strong> <span id="result-address"></span></p>
+                            <p><strong>Status:</strong> <span id="result-status">Added to route</span></p>
+                        </div>
+                        <button class="btn btn-primary" id="scan-another">📱 Scan Another</button>
+                    </div>
+                </div>
+
+                <!-- Routes Section -->
+                <div id="routes" class="section">
+                    <div class="section-header">
+                        <h2>Optimized Routes</h2>
+                        <button class="btn btn-primary" id="optimize-routes">🔄 Optimize Now</button>
+                    </div>
+
+                    <div class="routes-container">
+                        <div id="routes-list" class="routes-grid">
+                            <p class="empty-state">No routes available. Scan packages first.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- History Section -->
+                <div id="history" class="section">
+                    <div class="section-header">
+                        <h2>Delivery History</h2>
+                        <button class="btn btn-secondary" id="clear-history">🗑️ Clear History</button>
+                    </div>
+
+                    <div class="history-container">
+                        <div id="history-list" class="history-scroll">
+                            <p class="empty-state">No delivery history yet.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Section -->
+                <div id="settings" class="section">
+                    <div class="section-header">
+                        <h2>Settings</h2>
+                    </div>
+
+                    <div class="settings-container">
+                        <div class="settings-group">
+                            <h3>API Configuration</h3>
+                            <div class="form-group">
+                                <label for="google-maps-key">Google Maps API Key</label>
+                                <input type="password" id="google-maps-key" placeholder="Enter your API key">
+                                <small>Get it from: https://cloud.google.com/maps-platform</small>
+                            </div>
+                        </div>
+
+                        <div class="settings-group">
+                            <h3>Delivery Settings</h3>
+                            <div class="form-group">
+                                <label for="max-distance">Max Distance per Route (km)</label>
+                                <input type="number" id="max-distance" value="50" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="avg-speed">Average Speed (km/h)</label>
+                                <input type="number" id="avg-speed" value="30" min="1">
+                            </div>
+                        </div>
+
+                        <div class="settings-group">
+                            <h3>Preferences</h3>
+                            <div class="form-group checkbox">
+                                <input type="checkbox" id="enable-notifications" checked>
+                                <label for="enable-notifications">Enable Notifications</label>
+                            </div>
+                            <div class="form-group checkbox">
+                                <input type="checkbox" id="auto-optimize" checked>
+                                <label for="auto-optimize">Auto-optimize Routes</label>
+                            </div>
+                        </div>
+
+                        <div class="settings-group">
+                            <h3>Data Management</h3>
+                            <button class="btn btn-secondary" id="export-data">📥 Export Data</button>
+                            <button class="btn btn-danger" id="reset-app">🔄 Reset All Data</button>
+                        </div>
+
+                        <button class="btn btn-primary btn-block" id="save-settings">💾 Save Settings</button>
+                    </div>
+                </div>
+
+            </section>
+        </main>
+    </div>
+
+    <!-- Notifications -->
+    <div id="notification" class="notification" style="display: none;"></div>
+
+    <!-- Loading Spinner -->
+    <div id="loader" class="loader" style="display: none;">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/maps.js"></script>
+    <script src="js/route.js"></script>
+    <script src="js/scanner.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
