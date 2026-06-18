@@ -354,17 +354,24 @@ const Scanner = {
         const address = formData.deliveryAddress || formData.address;
         if (address) {
             const pincode = this.extractPincode(address);
-            const geocodeFn = pincode
-                ? () => Maps.geocodeByPincode(pincode).catch(() => Maps.geocodeAddress(address))
-                : () => Maps.geocodeAddress(address);
 
-            geocodeFn()
+            const tryGeocode = () => {
+                if (pincode) {
+                    return Maps.geocodeByPincode(pincode)
+                        .catch(() => Maps.geocodePincodeFallback(pincode))
+                        .catch(() => Maps.geocodeWithNominatim(address));
+                }
+                return Maps.geocodeAddress(address)
+                    .catch(() => Maps.geocodeWithNominatim(address));
+            };
+
+            tryGeocode()
                 .then(coords => {
                     formData.latitude = coords.lat;
                     formData.longitude = coords.lng;
                 })
                 .catch(err => {
-                    console.error('Geocoding error:', err);
+                    console.error('All geocoding failed:', err);
                     showNotification('Could not geocode address. Saved without coordinates.', 'warning');
                     formData.latitude = null;
                     formData.longitude = null;

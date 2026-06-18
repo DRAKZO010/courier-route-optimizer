@@ -275,5 +275,40 @@ const Maps = {
                 }
             });
         });
+    },
+
+    geocodeWithNominatim: function (address) {
+        return new Promise((resolve, reject) => {
+            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
+            fetch(url, { headers: { 'User-Agent': 'CourierRouteOptimizer/1.0' } })
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.length > 0) {
+                        resolve({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+                    } else {
+                        reject('Nominatim: no results');
+                    }
+                })
+                .catch(err => reject('Nominatim error: ' + err.message));
+        });
+    },
+
+    geocodePincodeFallback: function (pincode) {
+        return new Promise((resolve, reject) => {
+            const url = `https://api.postalpincode.in/pincode/${pincode}`;
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data[0] && data[0].Status === 'Success' && data[0].PostOffice && data[0].PostOffice.length > 0) {
+                        const po = data[0].PostOffice[0];
+                        const query = `${po.Name}, ${po.District}, ${po.State}, India`;
+                        return this.geocodeWithNominatim(query);
+                    } else {
+                        reject('Invalid pincode');
+                    }
+                })
+                .then(resolve)
+                .catch(reject);
+        });
     }
 };

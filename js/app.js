@@ -328,8 +328,11 @@ function optimizeRoutes() {
 
     const withCoords = packages.filter(p => p.latitude != null && p.longitude != null);
     if (withCoords.length === 0) {
-        showNotification('No packages with valid addresses. Check geocoding.', 'warning');
+        showNotification('No packages with valid coordinates. Geocoding may have failed for all.', 'warning');
         return;
+    }
+    if (withCoords.length < packages.length) {
+        showNotification(`${withCoords.length} of ${packages.length} packages have coordinates. Optimizing those.`, 'info');
     }
 
     const routes = RouteOptimizer.optimizeRoutes(packages, currentLocation);
